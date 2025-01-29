@@ -12,17 +12,39 @@ function showError(message) {
 
 function checkWebGLSupport() {
   const canvas = document.createElement('canvas');
-  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-  if (!gl) {
-    throw new Error('WebGL not supported');
+  const contextTypes = ['webgl2', 'webgl', 'experimental-webgl'];
+  let gl = null;
+  
+  for (const type of contextTypes) {
+    gl = canvas.getContext(type, {
+      failIfMajorPerformanceCaveat: true,
+      powerPreference: 'high-performance'
+    });
+    if (gl) break;
   }
-  return gl;
+  
+  if (!gl) {
+    throw new Error('WebGL not supported or disabled');
+  }
+  
+  // Clean up
+  gl.getExtension('WEBGL_lose_context')?.loseContext();
+  return true;
 }
 
 async function setupCamera() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const constraints = {
+      video: {
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        facingMode: 'user'
+      }
+    };
+    
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     videoElement.srcObject = stream;
+    
     return new Promise((resolve) => {
       videoElement.onloadedmetadata = () => {
         videoElement.play();
@@ -30,36 +52,43 @@ async function setupCamera() {
       };
     });
   } catch (error) {
-    throw new Error('Camera access denied or not available');
+    throw new Error(`Camera access denied or not available: ${error.message}`);
   }
 }
 
 async function initializeElements() {
   videoElement = document.getElementById('video');
   canvasElement = document.getElementById('output');
-  canvasCtx = canvasElement.getContext('2d');
+  canvasCtx = canvasElement.getContext('2d', {
+    alpha: true,
+    desynchronized: true,
+    willReadFrequently: true
+  });
 
   if (!videoElement || !canvasElement || !canvasCtx) {
     throw new Error('Required elements not found');
   }
 
-  // Set canvas dimensions
   canvasElement.width = 640;
   canvasElement.height = 480;
 }
 
 async function initializePose() {
   try {
-    // Check WebGL support first
-    checkWebGLSupport();
+    // Check WebGL support
+    if (!checkWebGLSupport()) {
+      throw new Error('WebGL not properly supported');
+    }
     
     // Initialize elements
     await initializeElements();
 
-    // Setup camera first
+    // Setup camera
     await setupCamera();
 
-    // Initialize MediaPipe Pose
+    // Initialize MediaPipe Pose with a delay to ensure proper initialization
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     pose = new Pose({
       locateFile: (file) => {
         return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
@@ -84,7 +113,11 @@ async function initializePose() {
     camera = new Camera(videoElement, {
       onFrame: async () => {
         if (pose) {
-          await pose.send({image: videoElement});
+          try {
+            await pose.send({image: videoElement});
+          } catch (error) {
+            console.error('Error in pose detection:', error);
+          }
         }
       },
       width: 640,
@@ -116,9 +149,9 @@ function onResults(results) {
   }
 }
 
-// Start the application
-document.addEventListener('DOMContentLoaded', () => {
-  initializePose();
+// Start the application when all resources are loaded
+window.addEventListener('load', () => {
+  setTimeout(initializePose, 1000);
 });
 
 // Cleanup on page unload
