@@ -9,6 +9,16 @@ let isProcessing = false;
 let offscreenCanvas = null;
 let offscreenCtx = null;
 
+// Add smoothing variables
+let previousLandmarks = {
+  pose: null,
+  face: null,
+  leftHand: null,
+  rightHand: null
+};
+const SMOOTHING_FACTOR = 0.7; // Higher = more smoothing (0-1)
+const NOISE_THRESHOLD = 0.005; // Minimum movement to register
+
 // Optimized color schemes with reduced complexity
 const BODY_PARTS = {
   pose: { color: '#00FFFF', size: 4 },
@@ -107,6 +117,39 @@ async function initializeElements() {
   offscreenCtx = offscreenCanvas.getContext('2d');
 }
 
+// Add smoothing function
+function smoothLandmarks(currentLandmarks, previousLandmarks, smoothingFactor = SMOOTHING_FACTOR) {
+  if (!currentLandmarks || !previousLandmarks || currentLandmarks.length !== previousLandmarks.length) {
+    return currentLandmarks;
+  }
+  
+  return currentLandmarks.map((current, index) => {
+    const previous = previousLandmarks[index];
+    if (!previous) return current;
+    
+    // Calculate distance to determine if we should smooth
+    const distance = Math.sqrt(
+      Math.pow(current.x - previous.x, 2) + 
+      Math.pow(current.y - previous.y, 2)
+    );
+    
+    // Only smooth if movement is above noise threshold
+    if (distance < NOISE_THRESHOLD) {
+      return previous; // Keep previous position for very small movements
+    }
+    
+    // Apply exponential smoothing
+    return {
+      x: previous.x * smoothingFactor + current.x * (1 - smoothingFactor),
+      y: previous.y * smoothingFactor + current.y * (1 - smoothingFactor),
+      z: current.z !== undefined ? 
+          (previous.z !== undefined ? previous.z * smoothingFactor + current.z * (1 - smoothingFactor) : current.z) : 
+          undefined,
+      visibility: current.visibility !== undefined ? current.visibility : undefined
+    };
+  });
+}
+
 function drawConnections(landmarks, connections, color, lineWidth = 2) {
   if (!landmarks || !connections || landmarks.length === 0) return;
   
@@ -179,8 +222,8 @@ async function initializeHolistic() {
       enableSegmentation: false,
       smoothSegmentation: false,
       refineFaceLandmarks: false,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.8
     });
 
     holistic.onResults(onResults);
@@ -230,6 +273,45 @@ function onResults(results) {
 
   updateFPS();
   
+  // Apply smoothing to landmarks
+  let smoothedResults = { ...results };
+  
+  if (results.poseLandmarks) {
+    smoothedResults.poseLandmarks = smoothLandmarks(
+      results.poseLandmarks, 
+      previousLandmarks.pose,
+      SMOOTHING_FACTOR
+    );
+    previousLandmarks.pose = [...smoothedResults.poseLandmarks];
+  }
+  
+  if (results.faceLandmarks) {
+    smoothedResults.faceLandmarks = smoothLandmarks(
+      results.faceLandmarks, 
+      previousLandmarks.face,
+      SMOOTHING_FACTOR * 0.8 // Less smoothing for face for responsiveness
+    );
+    previousLandmarks.face = [...smoothedResults.faceLandmarks];
+  }
+  
+  if (results.leftHandLandmarks) {
+    smoothedResults.leftHandLandmarks = smoothLandmarks(
+      results.leftHandLandmarks, 
+      previousLandmarks.leftHand,
+      SMOOTHING_FACTOR * 0.6 // Less smoothing for hands
+    );
+    previousLandmarks.leftHand = [...smoothedResults.leftHandLandmarks];
+  }
+  
+  if (results.rightHandLandmarks) {
+    smoothedResults.rightHandLandmarks = smoothLandmarks(
+      results.rightHandLandmarks, 
+      previousLandmarks.rightHand,
+      SMOOTHING_FACTOR * 0.6 // Less smoothing for hands
+    );
+    previousLandmarks.rightHand = [...smoothedResults.rightHandLandmarks];
+  }
+  
   // Clear offscreen canvas
   offscreenCtx.fillStyle = '#000000';
   offscreenCtx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
@@ -237,31 +319,31 @@ function onResults(results) {
   let totalLandmarks = 0;
   
   // Draw pose
-  if (results.poseLandmarks && results.poseLandmarks.length > 0) {
-    totalLandmarks += results.poseLandmarks.filter(lm => lm.visibility > 0.5).length;
-    drawConnections(results.poseLandmarks, POSE_CONNECTIONS, BODY_PARTS.pose.color, 3);
-    drawLandmarks(results.poseLandmarks, BODY_PARTS.pose.color, BODY_PARTS.pose.size);
+  if (smoothedResults.poseLandmarks && smoothedResults.poseLandmarks.length > 0) {
+    totalLandmarks += smoothedResults.poseLandmarks.filter(lm => lm.visibility > 0.5).length;
+    drawConnections(smoothedResults.poseLandmarks, POSE_CONNECTIONS, BODY_PARTS.pose.color, 3);
+    drawLandmarks(smoothedResults.poseLandmarks, BODY_PARTS.pose.color, BODY_PARTS.pose.size);
   }
   
   // Draw face landmarks (simplified)
-  if (results.faceLandmarks && results.faceLandmarks.length > 0) {
-    totalLandmarks += Math.min(results.faceLandmarks.length, 50); // Limit for performance
+  if (smoothedResults.faceLandmarks && smoothedResults.faceLandmarks.length > 0) {
+    totalLandmarks += Math.min(smoothedResults.faceLandmarks.length, 50); // Limit for performance
     // Only draw every 3rd face landmark for performance
-    const simplifiedFace = results.faceLandmarks.filter((_, i) => i % 3 === 0);
+    const simplifiedFace = smoothedResults.faceLandmarks.filter((_, i) => i % 3 === 0);
     drawLandmarks(simplifiedFace, BODY_PARTS.face.color, BODY_PARTS.face.size);
   }
   
   // Draw hands
-  if (results.leftHandLandmarks && results.leftHandLandmarks.length > 0) {
-    totalLandmarks += results.leftHandLandmarks.length;
-    drawConnections(results.leftHandLandmarks, HAND_CONNECTIONS, BODY_PARTS.leftHand.color, 2);
-    drawLandmarks(results.leftHandLandmarks, BODY_PARTS.leftHand.color, BODY_PARTS.leftHand.size);
+  if (smoothedResults.leftHandLandmarks && smoothedResults.leftHandLandmarks.length > 0) {
+    totalLandmarks += smoothedResults.leftHandLandmarks.length;
+    drawConnections(smoothedResults.leftHandLandmarks, HAND_CONNECTIONS, BODY_PARTS.leftHand.color, 2);
+    drawLandmarks(smoothedResults.leftHandLandmarks, BODY_PARTS.leftHand.color, BODY_PARTS.leftHand.size);
   }
   
-  if (results.rightHandLandmarks && results.rightHandLandmarks.length > 0) {
-    totalLandmarks += results.rightHandLandmarks.length;
-    drawConnections(results.rightHandLandmarks, HAND_CONNECTIONS, BODY_PARTS.rightHand.color, 2);
-    drawLandmarks(results.rightHandLandmarks, BODY_PARTS.rightHand.color, BODY_PARTS.rightHand.size);
+  if (smoothedResults.rightHandLandmarks && smoothedResults.rightHandLandmarks.length > 0) {
+    totalLandmarks += smoothedResults.rightHandLandmarks.length;
+    drawConnections(smoothedResults.rightHandLandmarks, HAND_CONNECTIONS, BODY_PARTS.rightHand.color, 2);
+    drawLandmarks(smoothedResults.rightHandLandmarks, BODY_PARTS.rightHand.color, BODY_PARTS.rightHand.size);
   }
   
   // Copy offscreen canvas to main canvas in one operation
