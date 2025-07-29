@@ -1,18 +1,25 @@
 body {
   margin: 0;
   padding: 0;
-  background: #000;
+  background: radial-gradient(circle at center, #0a0a0a 0%, #000000 100%);
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
   flex-direction: column;
+  font-family: 'Arial', sans-serif;
+  overflow: hidden;
 }
 
 .container {
   position: relative;
   width: 640px;
   height: 480px;
+  border: 2px solid #00FF88;
+  border-radius: 12px;
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.5),
+              inset 0 0 30px rgba(0, 255, 136, 0.1);
+  overflow: hidden;
 }
 
 canvas {
@@ -22,13 +29,18 @@ canvas {
   width: 100%;
   height: 100%;
   background: transparent;
+  cursor: crosshair;
 }
 
 video {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   opacity: 0;
+  pointer-events: none;
 }
 
 #error-message {
@@ -36,9 +48,46 @@ video {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.8);
-  padding: 20px;
-  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 0, 0, 0.9), rgba(200, 0, 0, 0.9));
+  color: white;
+  padding: 30px;
+  border-radius: 15px;
   max-width: 80%;
   z-index: 1000;
+  box-shadow: 0 10px 30px rgba(255, 0, 0, 0.5);
+  font-size: 16px;
+  text-align: center;
+}
+
+/* Loading animation */
+.container::before {
+  content: 'Initializing Full Body Tracking...';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #00FF88;
+  font-size: 18px;
+  font-weight: bold;
+  animation: pulse 1.5s ease-in-out infinite;
+  z-index: 10;
+}
+
+.container.loaded::before {
+  display: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+}
+
+/* Responsive design */
+@media (max-width: 700px) {
+  .container {
+    width: 90vw;
+    height: 67.5vw;
+    max-width: 640px;
+    max-height: 480px;
+  }
 }
