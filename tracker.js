@@ -45,6 +45,43 @@ const POSE_CONNECTIONS = [
   [24, 26], [26, 28], [28, 30], [28, 32]
 ];
 
+// Enhanced face landmark groups for better aesthetics
+const FACE_LANDMARKS = {
+  // Face contour
+  faceOval: [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
+  
+  // Left eye (from viewer's perspective - model's right eye)
+  leftEye: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+  leftEyebrow: [46, 53, 52, 51, 48, 115, 131, 134, 102, 49, 220, 305, 285, 336],
+  
+  // Right eye (from viewer's perspective - model's left eye)  
+  rightEye: [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
+  rightEyebrow: [276, 283, 282, 295, 285, 336, 296, 334, 293, 300, 276, 334, 296, 285],
+  
+  // Nose
+  noseTip: [1, 2, 5, 4, 6, 168, 8, 9, 10, 151],
+  noseBridge: [6, 51, 48, 115, 131, 134, 102, 49, 220, 305, 285, 336, 296, 334, 293, 300],
+  nostrils: [236, 3, 51, 48, 115, 131, 134, 102, 49, 220, 305, 285, 336, 296, 334],
+  
+  // Lips
+  outerLips: [61, 84, 17, 314, 405, 320, 307, 375, 321, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318],
+  innerLips: [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
+};
+
+// Enhanced color scheme for face features
+const FACE_COLORS = {
+  faceOval: '#00FFFF',
+  leftEye: '#4ECDC4',
+  rightEye: '#4ECDC4', 
+  leftEyebrow: '#FF6B9D',
+  rightEyebrow: '#FF6B9D',
+  noseTip: '#FECA57',
+  noseBridge: '#FFA726',
+  nostrils: '#FF8A65',
+  outerLips: '#E74C3C',
+  innerLips: '#C0392B'
+};
+
 function showError(message) {
   const errorElement = document.getElementById('error-message');
   errorElement.innerHTML = `
@@ -200,6 +237,88 @@ function drawLandmarks(landmarks, color, size = 2) {
   });
 }
 
+function drawFaceLandmarks(faceLandmarks) {
+  if (!faceLandmarks || faceLandmarks.length === 0) return;
+  
+  const width = canvasElement.width;
+  const height = canvasElement.height;
+  
+  // Draw face contour with connected lines
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.faceOval, FACE_COLORS.faceOval, 1.5, true);
+  
+  // Draw eyes with subtle glow effect
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.leftEye, FACE_COLORS.leftEye, 2, true);
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.rightEye, FACE_COLORS.rightEye, 2, true);
+  
+  // Draw eyebrows
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.leftEyebrow, FACE_COLORS.leftEyebrow, 1.5, false);
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.rightEyebrow, FACE_COLORS.rightEyebrow, 1.5, false);
+  
+  // Draw nose features
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.noseTip, FACE_COLORS.noseTip, 2.5, false);
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.noseBridge, FACE_COLORS.noseBridge, 1, false);
+  
+  // Draw lips with connected outline
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.outerLips, FACE_COLORS.outerLips, 2, true);
+  drawFaceFeature(faceLandmarks, FACE_LANDMARKS.innerLips, FACE_COLORS.innerLips, 1.5, true);
+}
+
+function drawFaceFeature(landmarks, indices, color, size, connected = false) {
+  if (!landmarks || !indices || indices.length === 0) return;
+  
+  const width = canvasElement.width;
+  const height = canvasElement.height;
+  
+  // Set up drawing style with glow effect
+  offscreenCtx.fillStyle = color;
+  offscreenCtx.strokeStyle = color;
+  offscreenCtx.shadowColor = color;
+  offscreenCtx.shadowBlur = 3;
+  
+  if (connected && indices.length > 2) {
+    // Draw connected lines for features like eyes, lips, face contour
+    offscreenCtx.lineWidth = 1;
+    offscreenCtx.beginPath();
+    
+    let validPoints = [];
+    indices.forEach(idx => {
+      if (landmarks[idx]) {
+        const x = landmarks[idx].x * width;
+        const y = landmarks[idx].y * height;
+        validPoints.push({x, y});
+      }
+    });
+    
+    if (validPoints.length > 1) {
+      offscreenCtx.moveTo(validPoints[0].x, validPoints[0].y);
+      for (let i = 1; i < validPoints.length; i++) {
+        offscreenCtx.lineTo(validPoints[i].x, validPoints[i].y);
+      }
+      // Close the path for eyes and lips
+      if (indices === FACE_LANDMARKS.leftEye || indices === FACE_LANDMARKS.rightEye || 
+          indices === FACE_LANDMARKS.outerLips || indices === FACE_LANDMARKS.innerLips) {
+        offscreenCtx.closePath();
+      }
+      offscreenCtx.stroke();
+    }
+  }
+  
+  // Draw landmark points
+  indices.forEach(idx => {
+    if (landmarks[idx]) {
+      const x = landmarks[idx].x * width;
+      const y = landmarks[idx].y * height;
+      
+      offscreenCtx.beginPath();
+      offscreenCtx.arc(x, y, size, 0, 2 * Math.PI);
+      offscreenCtx.fill();
+    }
+  });
+  
+  // Reset shadow
+  offscreenCtx.shadowBlur = 0;
+}
+
 async function initializeHolistic() {
   try {
     // Initialize elements first
@@ -325,12 +444,10 @@ function onResults(results) {
     drawLandmarks(smoothedResults.poseLandmarks, BODY_PARTS.pose.color, BODY_PARTS.pose.size);
   }
   
-  // Draw face landmarks (simplified)
+  // Draw enhanced face landmarks
   if (smoothedResults.faceLandmarks && smoothedResults.faceLandmarks.length > 0) {
-    totalLandmarks += Math.min(smoothedResults.faceLandmarks.length, 50); // Limit for performance
-    // Only draw every 3rd face landmark for performance
-    const simplifiedFace = smoothedResults.faceLandmarks.filter((_, i) => i % 3 === 0);
-    drawLandmarks(simplifiedFace, BODY_PARTS.face.color, BODY_PARTS.face.size);
+    totalLandmarks += Math.min(smoothedResults.faceLandmarks.length, 100); // Limit for performance
+    drawFaceLandmarks(smoothedResults.faceLandmarks);
   }
   
   // Draw hands
