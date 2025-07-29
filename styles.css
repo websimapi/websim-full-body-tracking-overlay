@@ -13,8 +13,10 @@ body {
 
 .container {
   position: relative;
-  width: 720px;
-  height: 540px;
+  width: 95vw;
+  height: 53.4375vw;
+  max-width: 1280px;
+  max-height: 720px;
   border: 3px solid #00FFFF;
   border-radius: 20px;
   box-shadow: 
@@ -33,6 +35,8 @@ canvas {
   height: 100%;
   background: transparent;
   cursor: crosshair;
+  image-rendering: auto;
+  image-rendering: -webkit-optimize-contrast;
 }
 
 video {
@@ -64,18 +68,20 @@ video {
 
 /* Loading animation */
 .container::before {
-  content: 'Initializing Advanced Body Tracking...';
+  content: 'Initializing Advanced Full Body & Face Tracking...';
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   color: #00FFFF;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 300;
   letter-spacing: 2px;
   animation: pulse 2s ease-in-out infinite;
   z-index: 10;
   text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+  text-align: center;
+  white-space: nowrap;
 }
 
 .container.loaded::before {
@@ -90,7 +96,7 @@ video {
   }
   50% { 
     opacity: 1; 
-    transform: translate(-50%, -50%) scale(1.1);
+    transform: translate(-50%, -50%) scale(1.05);
     text-shadow: 0 0 40px rgba(0, 255, 255, 1);
   }
 }
@@ -115,11 +121,10 @@ video {
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .container {
-    width: 95vw;
-    height: 71.25vw;
-    max-width: 720px;
-    max-height: 540px;
+  .container::before {
+    font-size: 14px;
+    white-space: normal;
+    max-width: 80%;
   }
   
   #debug-panel {
