@@ -68,7 +68,7 @@ video {
 
 /* Loading animation */
 .container::before {
-  content: 'Initializing Advanced Full Body & Face Tracking...';
+  content: 'Initializing Full Body Tracking...';
   position: absolute;
   top: 50%;
   left: 50%;
