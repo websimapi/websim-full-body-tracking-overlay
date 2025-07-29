@@ -3,11 +3,38 @@ let canvasElement = null;
 let canvasCtx = null;
 let pose = null;
 let camera = null;
+let lastFrameTime = 0;
+let frameCount = 0;
+
+// Enhanced color schemes for different body parts
+const BODY_PARTS = {
+  face: { color: '#FF6B9D', size: 3, connections: [[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8]] },
+  leftArm: { color: '#4ECDC4', size: 6, connections: [[11, 13], [13, 15], [15, 17], [17, 19], [19, 21]] },
+  rightArm: { color: '#45B7D1', size: 6, connections: [[12, 14], [14, 16], [16, 18], [18, 20], [20, 22]] },
+  torso: { color: '#96CEB4', size: 8, connections: [[11, 12], [11, 23], [12, 24], [23, 24]] },
+  leftLeg: { color: '#FECA57', size: 7, connections: [[23, 25], [25, 27], [27, 29], [29, 31]] },
+  rightLeg: { color: '#FF9FF3', size: 7, connections: [[24, 26], [26, 28], [28, 30], [30, 32]] },
+  hips: { color: '#54A0FF', size: 9, connections: [[23, 25], [24, 26]] }
+};
 
 function showError(message) {
   const errorElement = document.getElementById('error-message');
-  errorElement.textContent = message;
+  errorElement.innerHTML = `
+    <h3>Tracking Error</h3>
+    <p>${message}</p>
+    <small>Please ensure camera permissions are granted and you're using a supported browser (Chrome 91+, Firefox 90+, Safari 15+)</small>
+  `;
   errorElement.style.display = 'block';
+}
+
+function updateFPS() {
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFrameTime >= 1000) {
+    document.getElementById('fps').textContent = frameCount;
+    frameCount = 0;
+    lastFrameTime = now;
+  }
 }
 
 function checkWebGLSupport() {
@@ -19,7 +46,10 @@ function checkWebGLSupport() {
     try {
       gl = canvas.getContext(type, {
         failIfMajorPerformanceCaveat: false,
-        powerPreference: 'high-performance'
+        powerPreference: 'high-performance',
+        antialias: false,
+        stencil: false,
+        depth: false
       });
       if (gl) break;
     } catch (e) {
@@ -34,9 +64,10 @@ async function setupCamera() {
   try {
     const constraints = {
       video: {
-        width: { ideal: 640 },
-        height: { ideal: 480 },
-        facingMode: 'user'
+        width: { ideal: 720 },
+        height: { ideal: 540 },
+        facingMode: 'user',
+        frameRate: { ideal: 30, max: 60 }
       }
     };
     
@@ -59,15 +90,120 @@ async function initializeElements() {
   canvasElement = document.getElementById('output');
   canvasCtx = canvasElement.getContext('2d', {
     alpha: true,
-    desynchronized: false
+    desynchronized: true,
+    willReadFrequently: false
   });
 
   if (!videoElement || !canvasElement || !canvasCtx) {
     throw new Error('Required elements not found');
   }
 
-  canvasElement.width = 640;
-  canvasElement.height = 480;
+  canvasElement.width = 720;
+  canvasElement.height = 540;
+}
+
+function drawAdvancedSkeleton(landmarks) {
+  const width = canvasElement.width;
+  const height = canvasElement.height;
+
+  // Draw connections with gradients
+  Object.entries(BODY_PARTS).forEach(([part, config]) => {
+    canvasCtx.strokeStyle = config.color;
+    canvasCtx.lineWidth = 3;
+    canvasCtx.shadowColor = config.color;
+    canvasCtx.shadowBlur = 10;
+    
+    config.connections.forEach(([startIdx, endIdx]) => {
+      const start = landmarks[startIdx];
+      const end = landmarks[endIdx];
+      
+      if (start && end && start.visibility > 0.3 && end.visibility > 0.3) {
+        // Create gradient for each line
+        const gradient = canvasCtx.createLinearGradient(
+          start.x * width, start.y * height,
+          end.x * width, end.y * height
+        );
+        gradient.addColorStop(0, config.color);
+        gradient.addColorStop(1, config.color + '80');
+        
+        canvasCtx.strokeStyle = gradient;
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(start.x * width, start.y * height);
+        canvasCtx.lineTo(end.x * width, end.y * height);
+        canvasCtx.stroke();
+      }
+    });
+  });
+  
+  canvasCtx.shadowBlur = 0;
+}
+
+function drawAdvancedLandmarks(landmarks) {
+  const width = canvasElement.width;
+  const height = canvasElement.height;
+
+  // Draw landmarks with glow effects
+  landmarks.forEach((landmark, index) => {
+    if (landmark.visibility > 0.3) {
+      let partConfig = null;
+      
+      // Determine which body part this landmark belongs to
+      Object.entries(BODY_PARTS).forEach(([part, config]) => {
+        const ranges = {
+          face: [0, 10],
+          leftArm: [11, 22],
+          rightArm: [11, 22],
+          torso: [11, 24],
+          leftLeg: [23, 32],
+          rightLeg: [23, 32],
+          hips: [23, 24]
+        };
+        
+        if (ranges[part] && index >= ranges[part][0] && index <= ranges[part][1]) {
+          partConfig = config;
+        }
+      });
+      
+      if (partConfig) {
+        const x = landmark.x * width;
+        const y = landmark.y * height;
+        
+        // Outer glow
+        canvasCtx.shadowColor = partConfig.color;
+        canvasCtx.shadowBlur = 20;
+        canvasCtx.fillStyle = partConfig.color;
+        canvasCtx.beginPath();
+        canvasCtx.arc(x, y, partConfig.size * 1.5, 0, 2 * Math.PI);
+        canvasCtx.fill();
+        
+        // Inner dot
+        canvasCtx.shadowBlur = 0;
+        canvasCtx.fillStyle = '#FFFFFF';
+        canvasCtx.beginPath();
+        canvasCtx.arc(x, y, partConfig.size * 0.5, 0, 2 * Math.PI);
+        canvasCtx.fill();
+      }
+    }
+  });
+}
+
+function drawConfidenceRing(landmarks) {
+  const centerX = canvasElement.width / 2;
+  const centerY = canvasElement.height / 2;
+  const avgConfidence = landmarks.reduce((sum, lm) => sum + lm.visibility, 0) / landmarks.length;
+  
+  // Draw confidence ring
+  canvasCtx.strokeStyle = `rgba(0, 255, 255, ${avgConfidence})`;
+  canvasCtx.lineWidth = 3;
+  canvasCtx.beginPath();
+  canvasCtx.arc(centerX, centerY, 100, 0, Math.PI * 2 * avgConfidence);
+  canvasCtx.stroke();
+  
+  // Draw confidence text
+  canvasCtx.fillStyle = '#00FFFF';
+  canvasCtx.font = '16px monospace';
+  canvasCtx.textAlign = 'center';
+  canvasCtx.fillText(`${Math.round(avgConfidence * 100)}%`, centerX, centerY + 120);
 }
 
 async function initializePose() {
@@ -83,10 +219,10 @@ async function initializePose() {
     // Setup camera
     await setupCamera();
 
-    // Initialize MediaPipe Pose
+    // Initialize MediaPipe Pose with enhanced configuration
     pose = new Pose({
       locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
       }
     });
 
@@ -95,8 +231,8 @@ async function initializePose() {
       smoothLandmarks: true,
       enableSegmentation: false,
       smoothSegmentation: true,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
     });
 
     pose.onResults(onResults);
@@ -112,115 +248,46 @@ async function initializePose() {
           }
         }
       },
-      width: 640,
-      height: 480
+      width: 720,
+      height: 540
     });
     
     await camera.start();
     
+    // Remove loading indicator
+    document.querySelector('.container').classList.add('loaded');
+    
   } catch (error) {
     console.error('Error initializing:', error);
-    showError(`Error: ${error.message || 'Failed to initialize body tracking'}. Please make sure you have granted camera permissions and are using a supported browser.`);
+    showError(`Error: ${error.message || 'Failed to initialize body tracking'}`);
   }
-}
-
-function drawSkeleton(landmarks) {
-  const connections = [
-    [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8],
-    [9, 10], [11, 12], [11, 23], [12, 24], [23, 24], [23, 25], [24, 26],
-    [25, 27], [26, 28], [27, 29], [28, 30], [29, 31], [30, 32], [27, 31], [28, 32]
-  ];
-
-  // Draw connections
-  canvasCtx.strokeStyle = '#00FF88';
-  canvasCtx.lineWidth = 2;
-  
-  connections.forEach(([startIdx, endIdx]) => {
-    const start = landmarks[startIdx];
-    const end = landmarks[endIdx];
-    
-    if (start && end && start.visibility > 0.5 && end.visibility > 0.5) {
-      canvasCtx.beginPath();
-      canvasCtx.moveTo(start.x * canvasElement.width, start.y * canvasElement.height);
-      canvasCtx.lineTo(end.x * canvasElement.width, end.y * canvasElement.height);
-      canvasCtx.stroke();
-    }
-  });
-}
-
-function drawLandmarks(landmarks) {
-  const landmarkGroups = {
-    face: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    leftArm: [11, 13, 15, 17, 19, 21],
-    rightArm: [12, 14, 16, 18, 20, 22],
-    torso: [11, 12, 23, 24],
-    leftLeg: [23, 25, 27, 29, 31],
-    rightLeg: [24, 26, 28, 30, 32]
-  };
-
-  // Draw face landmarks
-  canvasCtx.fillStyle = '#FF6B6B';
-  landmarkGroups.face.forEach(idx => {
-    const point = landmarks[idx];
-    if (point && point.visibility > 0.5) {
-      canvasCtx.beginPath();
-      canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 4, 0, 2 * Math.PI);
-      canvasCtx.fill();
-    }
-  });
-
-  // Draw arms
-  canvasCtx.fillStyle = '#4ECDC4';
-  [...landmarkGroups.leftArm, ...landmarkGroups.rightArm].forEach(idx => {
-    const point = landmarks[idx];
-    if (point && point.visibility > 0.5) {
-      canvasCtx.beginPath();
-      canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 6, 0, 2 * Math.PI);
-      canvasCtx.fill();
-    }
-  });
-
-  // Draw torso
-  canvasCtx.fillStyle = '#45B7D1';
-  landmarkGroups.torso.forEach(idx => {
-    const point = landmarks[idx];
-    if (point && point.visibility > 0.5) {
-      canvasCtx.beginPath();
-      canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 8, 0, 2 * Math.PI);
-      canvasCtx.fill();
-    }
-  });
-
-  // Draw legs
-  canvasCtx.fillStyle = '#96CEB4';
-  [...landmarkGroups.leftLeg, ...landmarkGroups.rightLeg].forEach(idx => {
-    const point = landmarks[idx];
-    if (point && point.visibility > 0.5) {
-      canvasCtx.beginPath();
-      canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 7, 0, 2 * Math.PI);
-      canvasCtx.fill();
-    }
-  });
 }
 
 function onResults(results) {
   if (!canvasCtx || !canvasElement) return;
 
-  // Clear canvas with fade effect
-  canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+  updateFPS();
+  
+  // Clear canvas with trail effect
+  canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.05)';
   canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
   
   // Draw pose
   if (results.poseLandmarks) {
-    drawSkeleton(results.poseLandmarks);
-    drawLandmarks(results.poseLandmarks);
+    document.getElementById('landmarks').textContent = results.poseLandmarks.filter(lm => lm.visibility > 0.3).length;
     
-    // Draw confidence indicators
-    const avgConfidence = results.poseLandmarks.reduce((sum, lm) => sum + lm.visibility, 0) / results.poseLandmarks.length;
-    if (avgConfidence > 0.7) {
-      canvasCtx.fillStyle = '#00FF00';
-      canvasCtx.fillRect(10, 10, 200 * avgConfidence, 5);
-    }
+    drawAdvancedSkeleton(results.poseLandmarks);
+    drawAdvancedLandmarks(results.poseLandmarks);
+    drawConfidenceRing(results.poseLandmarks);
+    
+    // Add scan line effect
+    const scanY = (performance.now() / 10) % canvasElement.height;
+    canvasCtx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+    canvasCtx.lineWidth = 2;
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(0, scanY);
+    canvasCtx.lineTo(canvasElement.width, scanY);
+    canvasCtx.stroke();
   }
 }
 
